@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Portal - Farmers Market</title>
+    <style>
+         body {
+            font-family: 'Arial', sans-serif;
+            background-image: url('/static/login.jpg');
+            background-size: cover;
+            background-position: center;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #4CAF50;
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+        }
+        h1, h2 {
+            margin: 0;
+        }
+        .product-list, .cart, .market-search {
+            margin-top: 30px;
+        }
+        .product-item, .cart-item, .market-item {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            text-align: center;
+            width: 200px;
+            height: 300px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px 0;
+        }
+
+        /* 🆕 Flexbox for Left-to-Right Layout */
+        .flex-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px; 
+        }
+
+        .product-item img, .market-item img {
+            max-width: 100%;
+            max-height: 100px;
+            object-fit: cover;
+            margin-bottom: 10px;
+        }
+
+        /* Pop-up Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 50%;
+            text-align: center;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Welcome to Farmers Market</h1>
+        <a href="/logout"><button>Logout</button></a>
+    </header>
+
+    <!-- 🌍 Market Search Section -->
+    <div class="market-search">
+        <h2>Find a Market / Product</h2>
+        <input type="text" id="searchQuery" placeholder="Enter location or produce" required>
+        <select id="searchType">
+            <option value="location">Search by Location</option>
+            <option value="produce">Search by Produce</option>
+        </select>
+        <button onclick="searchMarket()">Search</button>
+        <div id="marketResults" class="flex-container"></div> <!-- Flex container for search results -->
+    </div>
+
+    <!-- 🥦 Product List Section (NO ADD TO CART) -->
+    <div class="product-list">
+        <h2>Available Market Locations</h2>
+        <div id="products" class="flex-container"></div> <!-- Flex container for available products -->
+        <a href="https://www.google.com/maps/search/?api=1&query=vegetable-market-near-me" target="_blank">
+            <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Map Icon" width="40" height="40">
+        </a>
+        {% for market in markets %}
+    <div>
+        <h3>{{ market.name }}</h3>
+        <p>{{ market.location }}</p>
+        <a href="https://www.google.com/maps/search/?api=1&query={{ market.location }}" target="_blank">
+            <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Map Icon" width="40" height="40">
+        </a>
+    </div>
+{% endfor %}
+    </div>
+
+    <!-- 🛒 Cart Section -->
+    <div class="cart">
+        <h2>Your Cart</h2>
+        <div id="cart"></div>
+        <button id="placeOrderBtn" style="display: none;" onclick="placeOrder()">Place Order</button>
+        <form action="/pre_order" method="POST" id="preOrderForm">
+       
+        </form>
+    </div>
+
+    <!-- Order Confirmation Modal -->
+    <div id="orderModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Order placed successfully to the vendor!</h2>
+        </div>
+    </div>
+
+    <script>
+        let cart = []; // 🛒 Cart array to hold items
+
+        // ✅ Load Products without Add to Cart Button
+        async function loadProducts() {
+            const response = await fetch('/get_products');
+            const products = await response.json();
+            const productsDiv = document.getElementById('products');
+            productsDiv.innerHTML = "";
+
+            if (products.length === 0) {
+                productsDiv.innerHTML = "<p>No products available.</p>";
+                return;
+            }
+
+            products.forEach(product => {
+                const productDiv = document.createElement("div");
+                productDiv.classList.add('product-item');
+                productDiv.innerHTML = `
+                    <img src="https://via.placeholder.com/150" alt="${product.name}">
+                    <h3>${product.name}</h3>
+                    <p><strong>Price:</strong> ₹${product.price}</p>
+                    <p><strong>Stock:</strong> ${product.stock} kg</p>
+                `;
+                productsDiv.appendChild(productDiv);
+            });
+        }
+
+        // ✅ Add to Cart Function
+        function addToCart(name, price) {
+            const existingItem = cart.find(item => item.name === name);
+            if (existingItem) {
+                existingItem.quantity += 1; 
+            } else {
+                cart.push({ name, price, quantity: 1 });
+            }
+            displayCart();
+        }
+
+        // ✅ Display Cart Items
+        function displayCart() {
+            const cartDiv = document.getElementById('cart');
+            cartDiv.innerHTML = "";
+
+            if (cart.length === 0) {
+                cartDiv.innerHTML = "<p>Your cart is empty.</p>";
+                document.getElementById('placeOrderBtn').style.display = "none";
+                return;
+            }
+
+            cart.forEach((item, index) => {
+                const cartItemDiv = document.createElement("div");
+                cartItemDiv.classList.add('cart-item');
+                cartItemDiv.innerHTML = `
+                    <p><strong>${item.name}</strong> - ₹${item.price} x ${item.quantity}</p>
+                    <button onclick="increaseQuantity(${index})">+</button>
+                    <button onclick="decreaseQuantity(${index})">-</button>
+                    <button onclick="removeFromCart(${index})">Remove</button>
+                `;
+                cartDiv.appendChild(cartItemDiv);
+            });
+            document.getElementById('placeOrderBtn').style.display = "block";
+        }
+
+        // ✅ Increase Quantity
+        function increaseQuantity(index) {
+            cart[index].quantity += 1;
+            displayCart();
+        }
+
+        // ✅ Decrease Quantity
+        function decreaseQuantity(index) {
+            if (cart[index].quantity > 1) {
+                cart[index].quantity -= 1;
+            } else {
+                removeFromCart(index);
+            }
+            displayCart();
+        }
+
+        // ✅ Remove Item from Cart
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            displayCart();
+        }
+
+        // ✅ Market Search Function with Add to Cart for Produce
+        async function searchMarket() {
+            const query = document.getElementById('searchQuery').value;
+            const type = document.getElementById('searchType').value;
+
+            const response = await fetch(`/search_market?query=${query}&type=${type}`);
+            const results = await response.json();
+            const resultsDiv = document.getElementById('marketResults');
+            resultsDiv.innerHTML = "";
+
+            if (results.length === 0) {
+                resultsDiv.innerHTML = "<p>No results found.</p>";
+                return;
+            }
+
+            if (type === 'produce') {
+                results.forEach(item => {
+                    const itemDiv = document.createElement("div");
+                    itemDiv.classList.add('market-item');
+                    itemDiv.innerHTML = `
+                        <h3>Farmer: ${item.farmer_name}</h3>
+                        <p><strong>Product:</strong> ${item.product_name}</p>
+                        <p><strong>Price:</strong> ₹${item.price}</p>
+                        <p><strong>Stock:</strong> ${item.stock} kg</p>
+                        <button onclick="addToCart('${item.product_name}', ${item.price})">Add to Cart</button>
+                    `;
+                    resultsDiv.appendChild(itemDiv);
+                });
+            } else {
+                results.forEach(market => {
+                    const marketDiv = document.createElement("div");
+                    marketDiv.classList.add('market-item');
+                    marketDiv.innerHTML = `
+                        <h3>Market: ${market.name}</h3>
+                        <p><strong>Location:</strong> ${market.location}</p>
+                        <p><strong>Produce Available:</strong> ${market.produce_available}</p>
+                    `;
+                    resultsDiv.appendChild(marketDiv);
+                });
+            }
+        }
+
+        // ✅ Load products when the page loads
+        loadProducts();
+
+        // ✅ Place Order function
+        function placeOrder() {
+            // Simulate order placed successfully and show pop-up
+            const modal = document.getElementById("orderModal");
+            modal.style.display = "block";
+        }
+
+        // Close Modal
+        function closeModal() {
+            const modal = document.getElementById("orderModal");
+            modal.style.display = "none";
+        }
+
+    </script>
+</body>
+</html>
